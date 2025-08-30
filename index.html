@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ad Watch Earn$</title>
+    <!-- Google Mobile Ads SDK Placeholder for Cordova -->
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(to bottom, #2c3e50, #3498db); color: white; text-align: center; padding: 20px; margin: 0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .container { max-width: 350px; width: 100%; }
+        h1 { color: #ecf0f1; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+        button { padding: 15px 30px; margin: 15px 10px; font-size: 18px; border: none; border-radius: 12px; color: white; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 5px 8px rgba(0,0,0,0.2); }
+        button:hover:not(:disabled) { transform: translateY(-3px); }
+        button:disabled { background: #95a5a6 !important; cursor: not-allowed; transform: none; box-shadow: none; }
+        #connectBtn { background: #2980b9; }
+        #watchAdBtn { background: #27ae60; font-weight: bold; }
+        #withdrawBtn { background: #e74c3c; }
+        #walletInfo { margin-top: 15px; font-weight: bold; color: #bdc3c7; background: rgba(0,0,0,0.2); padding: 8px 15px; border-radius: 8px; min-height: 24px; word-wrap: break-word; }
+        #stats { font-size: 20px; margin-top: 20px; color: #ecf0f1; background: rgba(0,0,0,0.25); padding: 15px 25px; border-radius: 10px; display: inline-block; }
+        .loader { border: 4px solid #f3f3f3; border-radius: 50%; border-top: 4px solid #3498db; width: 20px; height: 20px; -webkit-animation: spin 2s linear infinite; animation: spin 2s linear infinite; display: none; margin: 10px auto; }
+        @-webkit-keyframes spin { 0% { -webkit-transform: rotate(0deg); } 100% { -webkit-transform: rotate(360deg); } }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Ad Watch Earn$</h1>
+        
+        <button id="connectBtn" onclick="connectWallet()">Connect Wallet</button>
+        <p id="walletInfo">Wallet not connected</p>
+        
+        <div id="stats">
+            Coins: <span id="coinCount">0</span>
+        </div>
+        
+        <button id="watchAdBtn" onclick="showAd()" disabled>Watch Ad & Earn 100 Coins</button>
+        <div class="loader" id="loader"></div>
+        
+        <button id="withdrawBtn" onclick="withdraw()" disabled>Withdraw USDT</button>
+    </div>
+
+    <!-- Web3 and WalletConnect Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.8.2/dist/web3.min.js"></script>
+    <script src="https://unpkg.com/@walletconnect/web3-provider@1.8.0/dist/umd/index.min.js"></script>
+
+    <script>
+        const contractAddress = "0xcF6451f99E9856D3a43fB07Ce10D303777960A83";
+        const contractABI = [ { "inputs": [ { "internalType": "address", "name": "_tokenAddress", "type": "address" } ], "stateMutability": "nonpayable", "type": "constructor" }, { "anonymous": false, "inputs": [ { "indexed": true, "internalType": "address", "name": "to", "type": "address" }, { "indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256" } ], "name": "TokensWithdrawn", "type": "event" }, { "inputs": [], "name": "owner", "outputs": [ { "internalType": "address", "name": "", "type": "address" } ], "stateMutability": "view", "type": "function" }, { "inputs": [], "name": "token", "outputs": [ { "internalType": "contract IMinimalERC20", "name": "", "type": "address" } ], "stateMutability": "view", "type": "function" }, { "inputs": [ { "internalType": "address", "name": "_to", "type": "address" }, { "internalType": "uint256", "name": "_amount", "type": "uint256" } ], "name": "withdraw", "outputs": [], "stateMutability": "nonpayable", "type": "function" } ];
+        const adUnitId = "ca-app-pub-1297930471801325/7488844213";
+        
+        let provider, web3, account, coins = 0;
+        const coinToTokenRate = 1000;
+        
+        const walletInfoEl = document.getElementById('walletInfo'), coinCountEl = document.getElementById('coinCount'), withdrawBtnEl = document.getElementById('withdrawBtn'), connectBtnEl = document.getElementById('connectBtn'), watchAdBtnEl = document.getElementById('watchAdBtn'), loaderEl = document.getElementById('loader');
+
+        window.onload = function() {
+            if (window.ethereum) { // Check for DApp browser wallet (like inside Trust Wallet browser)
+                connectWallet();
+            }
+        };
+        
+        async function connectWallet() {
+            if (window.ethereum) {
+                provider = window.ethereum;
+                try {
+                    const accounts = await provider.request({ method: 'eth_requestAccounts' });
+                    await setupWeb3(accounts);
+                } catch (error) {
+                    walletInfoEl.innerText = "Connection failed.";
+                }
+            } 
+            else {
+                alert("Please open this website inside Trust Wallet or MetaMask's DApp browser to connect.");
+            }
+        }
+
+        async function setupWeb3(accounts) {
+            account = accounts[0];
+            web3 = new Web3(provider);
+            await switchToBSC();
+            setupListeners();
+            updateUI();
+        }
+
+        function setupListeners() {
+            provider.on('accountsChanged', (a) => { account = a[0] || null; updateUI(); if(!account) window.location.reload(); });
+            provider.on('chainChanged', () => window.location.reload());
+        }
+
+        async function switchToBSC() { if (web3 && await web3.eth.getChainId() !== 56) { try { await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x38' }] }); } catch (e) { if (e.code === 4902) await provider.request({ method: 'wallet_addEthereumChain', params: [{ chainId: '0x38', chainName: 'Binance Smart Chain', rpcUrls: ['https://bsc-dataseed.binance.org/'], nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 }, blockExplorerUrls: ['https://bscscan.com'] }] }); } } }
+        function updateUI() { if (account) { walletInfoEl.innerHTML = `Connected: ${account.substring(0, 6)}...${account.substring(38)}`; connectBtnEl.innerText = 'Connected'; connectBtnEl.disabled = true; watchAdBtnEl.disabled = false; } else { walletInfoEl.innerText = "Wallet not connected"; connectBtnEl.innerText = 'Connect Wallet'; connectBtnEl.disabled = false; watchAdBtnEl.disabled = true; } coinCountEl.innerText = coins; withdrawBtnEl.disabled = coins < coinToTokenRate; }
+        
+        function showAd() {
+            // This is a simulation for the web version
+            watchAdBtnEl.disabled = true;
+            loaderEl.style.display = 'block';
+            setTimeout(() => {
+                coins += 100;
+                updateUI();
+                watchAdBtnEl.disabled = false;
+                loaderEl.style.display = 'none';
+            }, 1500); // Simulate 1.5 second ad
+        }
+        
+        async function withdraw() {
+            if (!account) { alert("Please connect your wallet first."); return; }
+            if (coins < coinToTokenRate) { alert("You don't have enough coins to withdraw."); return; }
+            const contract = new web3.eth.Contract(contractABI, contractAddress);
+            const amountToWithdraw = Math.floor(coins / coinToTokenRate);
+            if (amountToWithdraw < 1) { alert("You need at least 1000 coins to withdraw."); return; }
+            const amountInWei = web3.utils.toWei(amountToWithdraw.toString(), 'ether');
+            withdrawBtnEl.disabled = true;
+            withdrawBtnEl.innerText = "Processing...";
+            try {
+                await contract.methods.withdraw(account, amountInWei).send({ from: account });
+                alert(`${amountToWithdraw} USDT Withdrawal successful!`);
+                coins -= (amountToWithdraw * coinToTokenRate);
+                updateUI();
+            } catch (error) {
+                alert(`Withdrawal failed.`);
+                console.error("Withdrawal Error:", error);
+            } finally {
+                withdrawBtnEl.disabled = coins < coinToTokenRate;
+                withdrawBtnEl.innerText = "Withdraw USDT";
+            }
+        }
+    </script>
+</body>
+</html>
